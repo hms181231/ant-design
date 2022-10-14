@@ -7,7 +7,7 @@ import type { RcFile, UploadFile, UploadProps } from '..';
 import Upload from '..';
 import mountTest from '../../../tests/shared/mountTest';
 import rtlTest from '../../../tests/shared/rtlTest';
-import { fireEvent, render, sleep, act } from '../../../tests/utils';
+import { fireEvent, render, waitFakeTimer, act } from '../../../tests/utils';
 import Form from '../../form';
 import { resetWarned } from '../../_util/warning';
 import { getFileItem, isImageUrl, removeFileItem } from '../utils';
@@ -19,8 +19,18 @@ describe('Upload', () => {
   mountTest(Upload);
   rtlTest(Upload);
 
+  beforeAll(() => {
+    jest.useFakeTimers();
+  });
   beforeEach(() => setup());
-  afterEach(() => teardown());
+
+  afterAll(() => {
+    jest.useRealTimers();
+  });
+  afterEach(() => {
+    jest.clearAllTimers();
+    teardown();
+  });
 
   // Mock for rc-util raf
   window.requestAnimationFrame = callback => window.setTimeout(callback, 16);
@@ -29,16 +39,18 @@ describe('Upload', () => {
 
   // https://github.com/react-component/upload/issues/36
   it('should get refs inside Upload in componentDidMount', () => {
-    let ref: React.ReactInstance;
+    let ref: React.RefObject<HTMLInputElement>;
     class App extends React.Component {
+      InputRef = React.createRef<HTMLInputElement>();
+
       componentDidMount() {
-        ref = this.refs.input;
+        ref = this.InputRef;
       }
 
       render() {
         return (
           <Upload supportServerRender={false}>
-            <input ref="input" />
+            <input ref={this.InputRef} />
           </Upload>
         );
       }
@@ -48,7 +60,6 @@ describe('Upload', () => {
   });
 
   it('return promise in beforeUpload', async () => {
-    jest.useFakeTimers();
     const data = jest.fn();
     const done = jest.fn();
     const props: UploadProps = {
@@ -74,22 +85,13 @@ describe('Upload', () => {
     fireEvent.change(wrapper.querySelector('input')!, {
       target: { files: [{ file: 'foo.png' }] },
     });
-    act(() => {
-      jest.runAllTimers();
-    });
-    await act(async () => {
-      for (let i = 0; i < 4; i += 1) {
-        // eslint-disable-next-line no-await-in-loop
-        await Promise.resolve();
-      }
-    });
-    expect(done).toHaveBeenCalled();
 
-    jest.useRealTimers();
+    await waitFakeTimer();
+
+    expect(done).toHaveBeenCalled();
   });
 
   it('beforeUpload can be falsy', async () => {
-    jest.useFakeTimers();
     const done = jest.fn();
     const props: UploadProps = {
       action: 'http://upload.com',
@@ -110,18 +112,13 @@ describe('Upload', () => {
     fireEvent.change(wrapper.querySelector('input')!, {
       target: { files: [{ file: 'foo.png' }] },
     });
-    await act(async () => {
-      for (let i = 0; i < 4; i += 1) {
-        // eslint-disable-next-line no-await-in-loop
-        await Promise.resolve();
-      }
-    });
+
+    await waitFakeTimer();
+
     expect(done).toHaveBeenCalled();
-    jest.useRealTimers();
   });
 
   it('upload promise return file in beforeUpload', async () => {
-    jest.useFakeTimers();
     const done = jest.fn();
     const data = jest.fn();
     const props: UploadProps = {
@@ -153,18 +150,10 @@ describe('Upload', () => {
     fireEvent.change(wrapper.querySelector('input')!, {
       target: { files: [{ file: 'foo.png' }] },
     });
-    act(() => {
-      jest.runAllTimers();
-    });
-    await act(async () => {
-      for (let i = 0; i < 4; i += 1) {
-        // eslint-disable-next-line no-await-in-loop
-        await Promise.resolve();
-      }
-    });
+
+    await waitFakeTimer();
 
     expect(done).toHaveBeenCalled();
-    jest.useRealTimers();
   });
 
   it('should not stop upload when return value of beforeUpload is false', done => {
@@ -298,8 +287,7 @@ describe('Upload', () => {
     expect(wrapper.querySelectorAll('input#upload').length).toBe(0);
   });
 
-  it('should be controlled by fileList', () => {
-    jest.useFakeTimers();
+  it('should be controlled by fileList', async () => {
     const fileList = [
       {
         uid: '-1',
@@ -312,11 +300,8 @@ describe('Upload', () => {
     const { rerender } = render(<Upload ref={ref} />);
     expect(ref.current.fileList).toEqual([]);
     rerender(<Upload ref={ref} fileList={fileList as UploadProps['fileList']} />);
-    act(() => {
-      jest.runAllTimers();
-    });
+    await waitFakeTimer();
     expect(ref.current.fileList).toEqual(fileList);
-    jest.useRealTimers();
   });
 
   it('should be able to get uid at first', () => {
@@ -451,7 +436,7 @@ describe('Upload', () => {
     expect(linkNode?.getAttribute('rel')).toBe('noopener');
   });
 
-  it('should not stop remove when return value of onRemove is false', done => {
+  it('should stop remove when return value of onRemove is false', done => {
     const mockRemove = jest.fn(() => false);
     const props: UploadProps = {
       onRemove: mockRemove,
@@ -469,7 +454,7 @@ describe('Upload', () => {
 
     fireEvent.click(wrapper.querySelector('div.ant-upload-list-item .anticon-delete')!);
 
-    setTimeout(() => {
+    act(() => {
       expect(mockRemove).toHaveBeenCalled();
       expect(props.fileList).toHaveLength(1);
       expect(props.fileList?.[0]?.status).toBe('done');
@@ -504,13 +489,8 @@ describe('Upload', () => {
     );
     fireEvent.click(container.querySelector('div.ant-upload-list-item .anticon-delete')!);
 
-    // uploadStart is a batch work which we need wait for react act
-    await act(async () => {
-      await Promise.resolve();
-    });
-
     // Delay return true for remove
-    await sleep(100);
+    await waitFakeTimer();
     await act(async () => {
       await removePromise(true);
     });
@@ -540,7 +520,7 @@ describe('Upload', () => {
 
     fireEvent.click(wrapper.querySelector('div.ant-upload-list-item .anticon-download')!);
 
-    setTimeout(() => {
+    act(() => {
       expect(props.fileList).toHaveLength(1);
       expect(props.fileList?.[0]?.status).toBe('done');
       done();
@@ -658,7 +638,6 @@ describe('Upload', () => {
 
   // https://github.com/ant-design/ant-design/issues/26427
   it('should sync file list with control mode', async () => {
-    jest.useFakeTimers();
     const done = jest.fn();
     let callTimes = 0;
 
@@ -718,21 +697,9 @@ describe('Upload', () => {
       target: { files: [{ file: 'foo.png' }] },
     });
 
-    await act(async () => {
-      for (let i = 0; i < 3; i += 1) {
-        // eslint-disable-next-line no-await-in-loop
-        await Promise.resolve();
-      }
-    });
-    act(() => {
-      jest.runAllTimers();
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await waitFakeTimer();
 
     expect(done).toHaveBeenCalled();
-    jest.useRealTimers();
   });
 
   describe('maxCount', () => {
@@ -764,7 +731,7 @@ describe('Upload', () => {
         },
       });
 
-      await sleep(20);
+      await waitFakeTimer();
 
       expect(onChange.mock.calls[0][0].fileList).toHaveLength(1);
       expect(onChange.mock.calls[0][0].fileList[0]).toEqual(
@@ -807,7 +774,7 @@ describe('Upload', () => {
         },
       });
 
-      await sleep(20);
+      await waitFakeTimer();
 
       expect(onChange.mock.calls[0][0].fileList).toHaveLength(2);
       expect(onChange.mock.calls[0][0].fileList).toEqual([
@@ -850,7 +817,7 @@ describe('Upload', () => {
       },
     });
 
-    await sleep();
+    await waitFakeTimer();
 
     const { file } = onChange.mock.calls[0][0];
     const clone = cloneDeep(file);
@@ -883,10 +850,7 @@ describe('Upload', () => {
     const rmBtn = wrapper.querySelectorAll('.ant-upload-list-item-card-actions-btn');
     fireEvent.click(rmBtn[rmBtn.length - 1]);
 
-    // Wait for Upload async remove
-    await act(async () => {
-      await sleep();
-    });
+    await waitFakeTimer();
   });
 
   // https://github.com/ant-design/ant-design/issues/30390
@@ -906,7 +870,7 @@ describe('Upload', () => {
     });
 
     // React 18 is async now
-    await sleep();
+    await waitFakeTimer();
 
     expect(onChange.mock.calls[0][0].fileList).toHaveLength(1);
     spyIE.mockRestore();
@@ -914,8 +878,6 @@ describe('Upload', () => {
 
   // https://github.com/ant-design/ant-design/issues/33819
   it('should show the animation of the upload children leaving when the upload children becomes null', async () => {
-    jest.useFakeTimers();
-
     const { container, rerender } = render(
       <Upload listType="picture-card">
         <button type="button">upload</button>
@@ -931,16 +893,12 @@ describe('Upload', () => {
     });
 
     // Motion leave status change: start > active
-    act(() => {
-      jest.runAllTimers();
-    });
+    await waitFakeTimer();
 
     fireEvent.animationEnd(container.querySelector('.ant-upload-select-picture-card')!);
     expect(container.querySelector('.ant-upload-select-picture-card')).not.toHaveClass(
       'ant-upload-animate-inline-leave-start',
     );
-
-    jest.useRealTimers();
   });
 
   it('<Upload /> should pass <UploadList /> prefixCls', async () => {
@@ -977,10 +935,7 @@ describe('Upload', () => {
       target: { files: [mockFile1, mockFile2] },
     });
 
-    // React 18 is async now
-    await act(async () => {
-      await sleep();
-    });
+    await waitFakeTimer();
     onChange.mockReset();
 
     // Processing

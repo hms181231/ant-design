@@ -1,6 +1,6 @@
 import React from 'react';
 import Upload from '..';
-import { fireEvent, render, sleep, waitFor, act } from '../../../tests/utils';
+import { fireEvent, render, waitFakeTimer, waitFor, act } from '../../../tests/utils';
 import Form from '../../form';
 import UploadList from '../UploadList';
 import { previewImage } from '../utils';
@@ -268,6 +268,7 @@ describe('Upload List', () => {
   });
 
   it('does concat fileList when beforeUpload returns false', async () => {
+    jest.useFakeTimers();
     const handleChange = jest.fn();
     const ref = React.createRef<any>();
     const { container: wrapper, unmount } = render(
@@ -285,12 +286,13 @@ describe('Upload List', () => {
       target: { files: [{ name: 'foo.png' }] },
     });
 
-    await sleep();
+    await waitFakeTimer();
 
     expect(ref.current.fileList.length).toBe(fileList.length + 1);
     expect(handleChange.mock.calls[0][0].fileList).toHaveLength(3);
 
     unmount();
+    jest.useRealTimers();
   });
 
   it('In the case of listType=picture, the error status does not show the download.', () => {
